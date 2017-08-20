@@ -14,11 +14,9 @@ The goals / steps of this project are the following:
 
 ## [Rubric](https://review.udacity.com/#!/rubrics/513/view) Points
 
-## Histogram of Oriented Gradients (HOG)
+All the code is included in the [Jupyter notebook](./Vehicle-detection.ipynb)
 
-### Explain how (and identify where in your code) you extracted HOG features from the training images.
-
-All the code is included in the 
+## Feature selection
 
 In order to automate the process of looking for the features to extract, I created an sklearn `FeatureUnion` where I plugged several custom sklearn transformations in order to extract the different features. This way, I can automate the search of the params for the features extractors with `GridSearchCV` or `RandomSearchCV`. 
 
@@ -259,12 +257,11 @@ Gives the selection of hyperparameters. (some lines omitted, for brevity):
   
   ...
 }
+```
 
 ## Sliding Window Search
 
-### 1. Describe how (and identify where in your code) you implemented a sliding window search.  How did you decide what scales to search and how much to overlap windows?
-
-In order to feed the classifier I have created a method to apply the sliding windows method. All the parameters are configurable. 
+In order to feed the classifier I have created a method to apply the sliding windows method. The size, the position and the steps are configurable parameters. I take into account the position of the horizon and the ratio of the window size that lies above and below the horizon to calculate the position (it is invariant to perspective projection). 
 
 
 ``` python
@@ -323,7 +320,7 @@ Result with `n_window_sizes = 3` and `step_relative = 1`
 
 ![Sliding Windows 1][windows_1]
 
-Result with default parameters (used in the video)
+Result with the default parameters (used in the video)
 
 ![Sliding Windows 1][windows_2]
 
