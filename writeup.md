@@ -6,13 +6,10 @@ The goals / steps of this project are the following:
 * Optionally, you can also apply a color transform and append binned color features, as well as histograms of color, to your HOG feature vector. 
 
 [//]: # (Image References)
-[image1]: ./examples/car_not_car.png
-[image2]: ./examples/HOG_example.jpg
-[image3]: ./examples/sliding_windows.jpg
-[image4]: ./examples/sliding_window.jpg
-[image5]: ./examples/bboxes_and_heat.png
-[image6]: ./examples/labels_map.png
-[image7]: ./examples/output_bboxes.png
+[samples]: ./output_images/samples.jpg
+[windows1]: ./output_images/windows_1.jpg
+[windows2]: ./output_images/windows_2.jpg
+
 [video1]: ./project_video.mp4
 
 ## [Rubric](https://review.udacity.com/#!/rubrics/513/view) Points
@@ -182,7 +179,7 @@ param_dist = {
     'clf__C': np.logspace(-4, 2, 7), # [0.0001, ..., 100]
 ```
 
-Then I used a `RandomizedSearchCV` instance using 3 k-folds to cross-validate 200 random models.
+Then I used a `RandomizedSearchCV` instance using 3-folds to cross-validate 200 random models.
 
 ``` python
 param_search = RandomizedSearchCV(
@@ -196,23 +193,13 @@ param_search = RandomizedSearchCV(
 )
 ```
 
-Finally I select the model with better accuracy.
-
-``` python
-clf = param_search.best_estimator_
-%time clf.score(X_test, y_test)
-```
-```
-CPU times: user 5.21 s, sys: 23.9 ms, total: 5.24 s
-Wall time: 5.36 s
-0.99042792792792789
-```
-
 ### Describe how (and identify where in your code) you trained a classifier using your selected HOG features (and color features if you used them).
 
 #### Data preparation
 
 I used the dataset provided from Udacity. These example images come from a combination of the GTI vehicle image database, the KITTI vision benchmark suite, and examples extracted from the project video itself.
+
+![Samples][samples]
 
 Then I kept aside a 20% of the samples for validation. Unfortunately, the data is extracted from video, it means that the same car appears in several samples. Therefore we are leaking some information of the validation set into the training set. Solving this issue, would require to inspect manually all the samples and partition them in a way that the same car doesn't appear in both datasets.
 
@@ -226,13 +213,32 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2, stratify
 print('Shapes: X_train={} X_test={}'.format(X_train.shape, X_test.shape))
 print(np.max(X))
 ``` 
+#### Training and model selection
+
+After some exploration, I decided to use a Linear SVM. I also played with RBF kernels, but the training was very slow and memory intensive. Intuitively, I think that a neural network would work well, but as a challenge, I wanted to see how far a simple linear model could go with a good feature selection. 
+
+As described in the previous section, I built a classification pipeline and I trained 200 random combinations of the hyperparameters. 
+
+``` python
+clf = param_search.best_estimator_
+%time clf.score(X_test, y_test)
+```
+
+The best classifier gives an accuracy of over 99% on the test set. Nevertheless, we should expect less accuracy in real examples as some information was leaked into the training set because the dataset wasn't partitioned properly in order to prevent the same car from appearing in the training and the test set.
+
+```
+CPU times: user 5.21 s, sys: 23.9 ms, total: 5.24 s
+Wall time: 5.36 s
+0.99042792792792789
+```
 
 I inspected the results of the model selection and persisted the best classifier. 
 
 ``` python
 clf.get_params()
 ```
-Gives the next result (some lines omitted, for brevity):
+
+Gives the selection of hyperparameters. (some lines omitted, for brevity):
 
 ``` python
 {'clf': LinearSVC(C=0.001, class_weight=None, dual=True, fit_intercept=True,
@@ -254,20 +260,72 @@ Gives the next result (some lines omitted, for brevity):
   ...
 }
 
-### Sliding Window Search
+## Sliding Window Search
 
 ### 1. Describe how (and identify where in your code) you implemented a sliding window search.  How did you decide what scales to search and how much to overlap windows?
 
-I decided to search random window positions at random scales all over the image and came up with this (ok just kidding I didn't actually ;):
+In order to feed the classifier I have created a method to apply the sliding windows method. All the parameters are configurable. 
 
-![alt text][image3]
 
-####2. Show some examples of test images to demonstrate how your pipeline is working.  What did you do to optimize the performance of your classifier?
+``` python
+def find_cars(frame, 
+              horizon_y = 420,
+              size = 64,
+              position_ratio = 5, # position_ratio = (bottom - horizon) / (horizon - top)
+              min_window_size = 64,
+              max_window_size = 280,
+              n_window_sizes = 5,
+              step_relative = 3,
+              draw_findings = True,
+              draw_windows = False
+             ):
 
-Ultimately I searched on two scales using YCrCb 3-channel HOG features plus spatially binned color and histograms of color in the feature vector, which provided a nice result.  Here are some example images:
+    step = size // step_relative
+    window_sizes = np.linspace(min_window_size, max_window_size, n_window_sizes).astype(np.int)
+    tops = horizon_y - (window_sizes) // position_ratio 
+    
+    windows = []
+    positions = []
+    for window_size, y1 in zip(window_sizes, tops):
+        y2 = y1 + window_size
+        scale = window_size / size
+        region_width = frame.shape[1] * size // window_size
+        region = cv2.resize(frame[y1:y2,...], (region_width, size))
+        x_margin = (region_width % step) // 2 
+        for x1_r in range(x_margin, x_margin + region_width - size, step):
+            x2_r = x1_r + size 
+            x1, x2 = int(x1_r * scale), int(x2_r * scale)
+            windows += [region[:, x1_r:x2_r]]
+            positions += [(x1, y1, x2, y2)]
+        
+    predictions = classifier.predict(windows)
+    
+    copy = None
+    heatmap = np.zeros(frame.shape[:-1])
+    
+    if draw_windows or draw_findings:
+        copy = np.zeros_like(frame)
+        
+    for pred, (x1, y1, x2, y2) in zip(predictions, positions):
+        if draw_windows:
+            cv2.rectangle(copy, (x1,y1), (x2,y2), (255,255,0), 3)
+        if pred == 1:
+            heatmap[y1:y2, x1:x2] += 1 
+            if draw_findings:
+                cv2.rectangle(copy, (x1,y1), (x2,y2), (0,0,255), 3)
+            
+    return heatmap, copy
+```
 
-![alt text][image4]
----
+### Examples
+
+Result with `n_window_sizes = 3` and `step_relative = 1`
+
+![Sliding Windows 1][windows_1]
+
+Result with default parameters (used in the video)
+
+![Sliding Windows 1][windows_2]
 
 ### Video Implementation
 
