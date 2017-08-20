@@ -9,6 +9,13 @@ The goals / steps of this project are the following:
 [samples]: ./output_images/samples.jpg
 [windows_1]: ./output_images/windows_1.jpg
 [windows_2]: ./output_images/windows_2.jpg
+[frame_20]: ./output_images/frame_20.jpg
+[frame_25]: ./output_images/frame_25.jpg
+[frame_30]: ./output_images/frame_30.jpg
+[frame_35]: ./output_images/frame_35.jpg
+[frame_40]: ./output_images/frame_40.jpg
+[frame_45]: ./output_images/frame_45.jpg
+
 
 [video]: ./project-video-result.mp4
 
@@ -334,24 +341,18 @@ In order to remove false positives I applied a temporal low-pass filter (smoothi
 
 ### Here are six frames and their corresponding heatmaps:
 
-![alt text][image5]
-
-### Here is the output of `scipy.ndimage.measurements.label()` on the integrated heatmap from all six frames:
-![alt text][image6]
-
-### Here the resulting bounding boxes are drawn onto the last frame in the series:
-![alt text][image7]
-
+![][frame_20]
+![][frame_25]
+![][frame_30]
+![][frame_35]
+![][frame_40]
+![][frame_45]
 
 
----
+### Discussion
 
-###Discussion
+In this project I have demonstrated that it is possible to use a simple linear classifier (a linear SVM) to detect vehicles on the road if the features are selected carefully. Nevertheless ,there are some limitations in the current pipeline. It is not easy to select a good combination of window size, position, smoothing and thresholds. I think that a segmentation pipeline based in a convolutional network could work better.
 
-####1. Briefly discuss any problems / issues you faced in your implementation of this project.  Where will your pipeline likely fail?  What could you do to make it more robust?
+In order to improve my current pipeline, I would train other classifiers and combine their heatmaps in order to be more robust to false positives. I should also find better segmentation of the detected bounding boxes as the current version is not very accurate. I also think that a form of tracking could be useful for improving the accuracy and detecting false positives. One possible way is to keep a list with the center of mass and their moments and prime the detections that lay close to the predicted points.
 
-I am pretty satisfied with the solution. 
-
-
-Here I'll talk about the approach I took, what techniques I used, what worked and why, where the pipeline might fail and how I might improve it if I were going to pursue this project further.  
-
+I also could have cached the HOG values between overlapping windows in order to improve the speed, but I decided not to do so as it would mess up the clarity of the code. I tried to replace the pipeline's HOG feature selector with one that allowed cached results, but I wasn't satisfied with the implementation and I discarded it.
