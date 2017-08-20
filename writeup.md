@@ -109,7 +109,7 @@ class ColorConverter(BaseEstimator, TransformerMixin):
 class SpatialBins(BaseEstimator, TransformerMixin):
     """ Feature extraction wrapped in a sklearn transformer. """
 
-    def __init__(self, spatial_size=(32, 3)):
+    def __init__(self, spatial_size=(32, 32)):
         self.spatial_size=spatial_size      
 
     def fit(self, x, y=None, **fit_params):
@@ -162,32 +162,101 @@ class HOG(BaseEstimator, TransformerMixin):
         return images
 ```
 
-In the first versions I also applied a PCA step in order to reduce the features vector dimension. At the end, I decided to remove this step, as I had some memory issues (I even exahusted the swap partition in my computer!) with parallel cross validation using up to 16 threads and it didn't improve substantially the speed nor the accuracy of the model.
+In preliminary versions, I applied a PCA step in order to reduce the features vector dimension. At the end, I decided to remove this step, as I had some memory issues (I even exahusted the swap partition in my computer!) with parallel cross validation using up to 16 threads and it didn't improve substantially the speed nor the accuracy of the model.
 
-The code for this step is contained in the first code cell of the IPython notebook (or in lines # through # of the file called `some_file.py`).  
+###  Explain how you settled on your final choice of HOG parameters.
 
-I started by reading in all the `vehicle` and `non-vehicle` images.  Here is an example of one of each of the `vehicle` and `non-vehicle` classes:
+In order to select the parameters of the classifier and the features to extract, I configured the range of the parameters to explore.
 
-![alt text][image1]
+``` python
+param_dist = {
+    'color__cspace': ['RGB', 'LUV', 'HLS', 'YUV', 'YCrCb'],
+    'feat__bin_spatial__spatial_size': [(32, 32), (16, 16)],
+    'feat__color_hist__hist_bins': [32, 16],    
+    'feat__hog__channels': [(0,)],
+    'feat__hog__orient': [8, 12],
+    'feat__hog__pixels_per_cell': [8, 16],
+    'feat__hog__cells_per_block': [2, 4],
+#     'pca__n_components': [None, .9, .93, .95, .97, .99],
+#     'pca__whiten': [ True, False ],
+    'clf__C': np.logspace(-4, 2, 7), # [0.0001, ..., 100]
+```
 
-I then explored different color spaces and different `skimage.hog()` parameters (`orientations`, `pixels_per_cell`, and `cells_per_block`).  I grabbed random images from each of the two classes and displayed them to get a feel for what the `skimage.hog()` output looks like.
+Then I used a `RandomizedSearchCV` instance using 3 k-folds to cross-validate 200 random models.
 
-Here is an example using the `YCrCb` color space and HOG parameters of `orientations=8`, `pixels_per_cell=(8, 8)` and `cells_per_block=(2, 2)`:
+``` python
+param_search = RandomizedSearchCV(
+    estimator=svc_pipeline, 
+    param_distributions=param_dist,
+    scoring='accuracy',
+    cv=3,
+    n_iter=200,
+    n_jobs=12,
+    verbose=10
+)
+```
 
+Finally I select the model with better accuracy.
 
-![alt text][image2]
+``` python
+clf = param_search.best_estimator_
+%time clf.score(X_test, y_test)
+```
+```
+CPU times: user 5.21 s, sys: 23.9 ms, total: 5.24 s
+Wall time: 5.36 s
+0.99042792792792789
+```
 
-####2. Explain how you settled on your final choice of HOG parameters.
+### Describe how (and identify where in your code) you trained a classifier using your selected HOG features (and color features if you used them).
 
-I tried various combinations of parameters and...
+#### Data preparation
 
-####3. Describe how (and identify where in your code) you trained a classifier using your selected HOG features (and color features if you used them).
+I used the dataset provided from Udacity. These example images come from a combination of the GTI vehicle image database, the KITTI vision benchmark suite, and examples extracted from the project video itself.
 
-I trained a linear SVM using...
+Then I kept aside a 20% of the samples for validation. Unfortunately, the data is extracted from video, it means that the same car appears in several samples. Therefore we are leaking some information of the validation set into the training set. Solving this issue, would require to inspect manually all the samples and partition them in a way that the same car doesn't appear in both datasets.
 
-###Sliding Window Search
+``` python
+# Combine datasets (set y = 1 if is a vehicle; 0 otherwise)
+X = np.vstack([vehicles, non_vehicles])
+y = np.hstack([np.ones(len(vehicles)), np.zeros(len(non_vehicles))])
 
-####1. Describe how (and identify where in your code) you implemented a sliding window search.  How did you decide what scales to search and how much to overlap windows?
+# Shuffles and splits the data in a stratified fashion
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=.2, stratify=y)
+print('Shapes: X_train={} X_test={}'.format(X_train.shape, X_test.shape))
+print(np.max(X))
+``` 
+
+I inspected the results of the model selection and persisted the best classifier. 
+
+``` python
+clf.get_params()
+```
+Gives the next result (some lines omitted, for brevity):
+
+``` python
+{'clf': LinearSVC(C=0.001, class_weight=None, dual=True, fit_intercept=True,
+      intercept_scaling=1, loss='squared_hinge', max_iter=1000,
+      multi_class='ovr', penalty='l2', random_state=None, tol=0.0001,
+      verbose=0),
+ 
+ ...
+ 
+ 'color': ColorConverter(cspace='YUV'),
+ 
+ ...
+ 
+ 'feat': FeatureUnion(n_jobs=1, transformer_list=[
+    ('bin_spatial', SpatialBins(spatial_size=(16, 16))), 
+    ('color_hist', ColorHistogram(hist_bins=32, hist_range=(0, 256))), 
+    ('hog', HOG(cells_per_block=2, channels=(0,), orient=12, pixels_per_cell=16, transform_sqrt=True))], transformer_weights=None),
+  
+  ...
+}
+
+### Sliding Window Search
+
+### 1. Describe how (and identify where in your code) you implemented a sliding window search.  How did you decide what scales to search and how much to overlap windows?
 
 I decided to search random window positions at random scales all over the image and came up with this (ok just kidding I didn't actually ;):
 
