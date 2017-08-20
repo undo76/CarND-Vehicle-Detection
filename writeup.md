@@ -7,8 +7,8 @@ The goals / steps of this project are the following:
 
 [//]: # (Image References)
 [samples]: ./output_images/samples.jpg
-[windows1]: ./output_images/windows_1.jpg
-[windows2]: ./output_images/windows_2.jpg
+[windows_1]: ./output_images/windows_1.jpg
+[windows_2]: ./output_images/windows_2.jpg
 
 [video1]: ./project_video.mp4
 
